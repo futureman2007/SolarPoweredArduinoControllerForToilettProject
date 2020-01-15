@@ -7,7 +7,7 @@ unsigned long prevTimeSinceProgStart = 0;
 
 //light value. this value was measured with smartphone light sensor. This should be equal to around 2000lx.
 //the higher the analog output of the sensor is, the darker it is.
-unsigned const int SENSOR_LIGHT_VALUE = 490;
+unsigned const int MINIMUM_LIGHT_NEEDED = 20;
 
 //**this threshold should only use the values 1,10 and 100.
 //if for example a threshold of 10 is used and the light value is set to 490, values like 490,491,492, ... ,499 are accepted as 490.**/
@@ -57,7 +57,7 @@ void loop() {
   checkIfTwoHoursHavePassed();
   checkIfToilettIsOccupiedAndHandleThatEvent();
   checkIfToilettWasFreedAgain();
-  delay(250);
+  delay(400);
 }//loop()
 
 
@@ -127,6 +127,8 @@ void letOnboardLEDBlink( int delayInMS,  int blinkamount) {
 }//letOnboardLEDBlink()
 
 bool enoughLightForSolarPowering(int threshold) {
+  int lightval = analogRead(INPUT_PIN_LIGHT_SENSOR);
+  int threholdedValue = calcThreholdedValue(lightval, threshold);;
   if (threshold <= 9 ) {
     threshold = 1;
   }
@@ -139,13 +141,29 @@ bool enoughLightForSolarPowering(int threshold) {
     threshold = 100;
   }
 
-  Serial.print("Light value is currently: ");
-  Serial.println(analogRead(INPUT_PIN_LIGHT_SENSOR) / threshold);
+  //test
 
-  if ((analogRead(INPUT_PIN_LIGHT_SENSOR) / threshold ) <= (SENSOR_LIGHT_VALUE / threshold)) {
+  Serial.print("Light value is currently: ");
+  Serial.println(lightval);
+
+  Serial.print("Light value thresholded is currently: ");
+  Serial.println(threholdedValue);
+  //\test
+  if (threholdedValue <= MINIMUM_LIGHT_NEEDED) {
     return true;
   } else {
     return false;
   }
 
 }//enoughLightForSolarPowering()
+//asuming that threshold is 1, 10, 100 and so on. 
+//Value of light will be always rounded up. Eg: 20 => 20; 21=>30; 22=>30 ... 29=>30, 30=>30, 31 =>40 and so on.
+int calcThreholdedValue(int lightvalueFromSensor, int threshold) {
+    int thresholdedValue = 0;
+    if( (lightvalueFromSensor % threshold) > 0){
+      thresholdedValue = lightvalueFromSensor + (threshold - (lightvalueFromSensor % threshold));
+    }else{
+      thresholdedValue = lightvalueFromSensor;
+    }
+    return thresholdedValue;
+}//calcThreholdedValue() 
