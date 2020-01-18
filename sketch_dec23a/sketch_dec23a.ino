@@ -1,30 +1,52 @@
+//-------Used Structs----------
+ 
+typedef struct {
+   int lightValuesMeasured [40];
+   int indexToInsertNext;
+   int arraySize;
+   double average;
+ }LightValues;
+ //used for calculation of average lightvalue
+LightValues lv = {
+  {0,0,0,0,0,0,0,0,0,0,
+   0,0,0,0,0,0,0,0,0,0,
+   0,0,0,0,0,0,0,0,0,0, 
+   0,0,0,0,0,0,0,0,0,0},
+  0,
+  40,
+  0.0
+};
 //-------global variables-------
 boolean toilettOccupied = false;
-
 //the previous timer valuer from millis().
-unsigned long prevTimeSinceProgStart = 0;
+unsigned long prevTimeSinceProgStartForTwoHourDetection = 0;
+unsigned long prevTimeSinceProgStartForTwentySecondDetection = 20000;
 
 
-//light value. this value was measured with smartphone light sensor. This should be equal to around 2000lx.
-//the higher the analog output of the sensor is, the darker it is.
-unsigned const int MINIMUM_LIGHT_NEEDED = 20;
+/*
+ * light value. this value was measured with smartphone light sensor. This should be equal to around 2000lx.
+ * the higher the analog output of the sensor is, the darker it is.
+ */
+unsigned const int MINIMUM_LIGHT_NEEDED = 22;
 
-//**this threshold should only use the values 1,10 and 100.
-//if for example a threshold of 10 is used and the light value is set to 490, values like 490,491,492, ... ,499 are accepted as 490.**/
-unsigned const short LIGHT_VALUE_THRESHOLD = 10;
+/* 
+ *  the cutOf of the readed lightvalues. should be always be a divisor of MINIMUM_LIGHT_NEEDED.
+ *  if sensor reads a light value of: 1,2,3,4,5,6,7,9,10,11, the value measured will be read as 11 if the CUT_OFF is 11.
+ *  the values 12,13,14,15,16, .. 22 will be read as 22 and 22,23,24,25, ..., 33 as 33 and so on.
+ */
+unsigned const int CUT_OFF = 11;
 
-
-// 2 hours in millis.
-unsigned const long TWO_HOUR_TIMER_IN_MS = 7200000;
-
-unsigned const long DELAY_TILL_NEXT_USAGE_DETECTION = 20000;
+// 2 hours = 7200000ms.
+unsigned const long TIMER_SEND_USAGECOUNT = 7200000;
+unsigned const long TIMER_TILL_NEXT_USAGE_DETECTION = 20000;
 
 //counter of detected toilett guests
 unsigned int usageCounter = 0;
 
 //===output pins===
-unsigned const int LED_OUTPUT_PIN = 13;
-
+unsigned const short LED_OUTPUT_PIN = 13;
+//Analog pin A3
+unsigned const short RELAIS_OUTPUT_PIN = 3;
 //===input pins ===
 //Digital Pin D7
 const short INPUT_PIN_REED_SWITCH = 7;
@@ -35,38 +57,45 @@ const short INPUT_PIN_LIGHT_SENSOR = 1;
 void setup() {
   //setup console output
   Serial.begin(9600);
-  //setup LED Pin port as output.
   pinMode(LED_OUTPUT_PIN, OUTPUT);
-  //setup the Digital pin port as input.
   pinMode(INPUT_PIN_REED_SWITCH, INPUT);
   pinMode(INPUT_PIN_LIGHT_SENSOR, INPUT_PULLUP);
-
+  pinMode(RELAIS_OUTPUT_PIN, OUTPUT);
+//fill the struct with lightvalues for initialisation.
+  for(int i = 0; i < lv.arraySize; i++){
+    lightValuesStructHandler();
+  }
 }//setup()
 
 // ============>>>put your main code here, to run repeatedly<<<============
 void loop() {
-  if (enoughLightForSolarPowering(LIGHT_VALUE_THRESHOLD)) {
+  lightValuesStructHandler();
+  if (enoughLightForSolarPowering()) {
     switchLEDOn();
   } else {
     switchLEDOff();
   }
-
-  if (checkIfTwoHoursHavePassed() == true) {
-    transmitDataAndResettCounter();
+  if (checkIfTwoHoursHavePassedAndResetTimer() == true) {
+    transmitDataAndResetUsageCounter();
   }
-  checkIfTwoHoursHavePassed();
   checkIfToilettIsOccupiedAndHandleThatEvent();
   checkIfToilettWasFreedAgain();
-  delay(400);
+  delay(500);
 }//loop()
 
 
 
 //-------/helper functions\-------
 void checkIfToilettIsOccupiedAndHandleThatEvent() {
-  if (digitalRead(INPUT_PIN_REED_SWITCH) == LOW && toilettOccupied == false ) {
-    handleToilettOccupied();
-    toilettOccupied = true;
+  if (digitalRead(INPUT_PIN_REED_SWITCH) == LOW 
+        && toilettOccupied == false 
+        && (millis() - prevTimeSinceProgStartForTwentySecondDetection >= TIMER_TILL_NEXT_USAGE_DETECTION) 
+      ) {
+      prevTimeSinceProgStartForTwentySecondDetection = millis();
+      usageCounter++;
+      Serial.print("New usage! Counter is now:");
+      Serial.println(usageCounter);
+      toilettOccupied = true;
   }
 }//checkIfToilettIsOccupiedAndHandleThatEvent()
 
@@ -76,32 +105,24 @@ void checkIfToilettWasFreedAgain() {
   }
 
 }//checkIfToilettWasFreedAgain()
-
-void handleToilettOccupied() {
-  usageCounter++;
-  Serial.print("New usage! Counter is now:");
-  Serial.println(usageCounter);
-  //letOnboardLEDBlink(250,3);
-  delay(DELAY_TILL_NEXT_USAGE_DETECTION);
-}//handleToilettOccupied()
 void letOnboardLEDBlink(int delayInMS) {
   letOnboardLEDBlink(delayInMS, 1);
 }//letOnboardLEDBlink()
 
-boolean checkIfTwoHoursHavePassed() {
-  if ((unsigned long) (millis() - prevTimeSinceProgStart ) >= TWO_HOUR_TIMER_IN_MS ) {
+boolean checkIfTwoHoursHavePassedAndResetTimer() {
+  if ((unsigned long) (millis() - prevTimeSinceProgStartForTwoHourDetection ) >= TIMER_SEND_USAGECOUNT ) {
     Serial.println("2 Hours are over! ");
+    prevTimeSinceProgStartForTwoHourDetection = millis();
     return true;
   }
   return false;
-}//checkIfTwoHoursHavePassed
+}//checkIfTwoHoursHavePassedAndResetTimer
 
-void transmitDataAndResettCounter() {
+void transmitDataAndResetUsageCounter() {
   Serial.println("Transmitting Data and resetting the counter of persons used the toilett.");
   //sendToiletteUsageCountMessage(usageCounter);
   usageCounter = 0;
-  prevTimeSinceProgStart = millis();
-}//transmitDataAndResettCounter()
+}//transmitDataAndResetUsageCounter()
 
 void switchLEDOn() {
   digitalWrite(LED_OUTPUT_PIN, HIGH);
@@ -126,44 +147,65 @@ void letOnboardLEDBlink( int delayInMS,  int blinkamount) {
   }
 }//letOnboardLEDBlink()
 
-bool enoughLightForSolarPowering(int threshold) {
-  int lightval = analogRead(INPUT_PIN_LIGHT_SENSOR);
-  int threholdedValue = calcThreholdedValue(lightval, threshold);;
-  if (threshold <= 9 ) {
-    threshold = 1;
-  }
-
-  if (threshold >= 10  && threshold <= 99) {
-    threshold = 10;
-  }
-
-  if (threshold >= 100) {
-    threshold = 100;
-  }
-
-  //test
-
-  Serial.print("Light value is currently: ");
-  Serial.println(lightval);
-
-  Serial.print("Light value thresholded is currently: ");
-  Serial.println(threholdedValue);
-  //\test
-  if (threholdedValue <= MINIMUM_LIGHT_NEEDED) {
+bool enoughLightForSolarPowering() {
+  if (lv.average <= MINIMUM_LIGHT_NEEDED) {
     return true;
   } else {
     return false;
   }
 
 }//enoughLightForSolarPowering()
-//asuming that threshold is 1, 10, 100 and so on. 
-//Value of light will be always rounded up. Eg: 20 => 20; 21=>30; 22=>30 ... 29=>30, 30=>30, 31 =>40 and so on.
-int calcThreholdedValue(int lightvalueFromSensor, int threshold) {
+/*
+* reeds a new light value and updates Data in lv from type struct LightValues.
+* this is the only function, which modifies the entries of the struct.
+*/
+void lightValuesStructHandler(){
+   unsigned long average = 0;
+   unsigned int lightval = analogRead(INPUT_PIN_LIGHT_SENSOR);
+     //Serial.print("lightval: ");
+     //Serial.println(lightval);
+   lightval = calcCutOff(lightval, CUT_OFF);
+     //Serial.print("cutOffedLightVal: ");
+     //Serial.println(lightval);
+   if(lv.indexToInsertNext >= lv.arraySize){
+      lv.indexToInsertNext = 0;
+   }
+   lv.lightValuesMeasured[lv.indexToInsertNext] = lightval;
+   lv.indexToInsertNext++;
+   for(int i = 0; i < lv.arraySize; i++){
+    average = average + lv.lightValuesMeasured[i];
+   }
+   lv.average = (double)average / lv.arraySize;
+   //Serial.println(lv.average);
+   //Serial.println("= = = = = = = = = = = = = = =");
+}//lightValuesStructHandler()
+
+//Cut off value to be set. If the Cut Off is eg.: 25, values like 1,2,3,4,5,6, ..., 22,23,24,25 are set to be 25. 26 will then therefore be 50.
+//used for light measurement. All measured values from the light sensor lesser then the minimum light needed, will be set to one value.
+int calcCutOff(int lightvalueFromSensor, int cutOff) {
     int thresholdedValue = 0;
-    if( (lightvalueFromSensor % threshold) > 0){
-      thresholdedValue = lightvalueFromSensor + (threshold - (lightvalueFromSensor % threshold));
+    if( (lightvalueFromSensor % cutOff) > 0){
+      thresholdedValue = lightvalueFromSensor + (cutOff - (lightvalueFromSensor % cutOff));
     }else{
       thresholdedValue = lightvalueFromSensor;
     }
     return thresholdedValue;
-}//calcThreholdedValue() 
+}//calcCutOff() 
+
+
+
+/**
+ * Idee: lass beim setup() 5 lichtwerte aufnehmen. einen Wert pro sekunde.
+ * Dannach: Berechne durchschnitt aus den array elementen. Dieser wird gethresholded. 
+ * Merke dir, wo du zuletzt eingefügt hast.
+ * füge eins weiter ein und merke dir diese position, 
+ * array ende: starte bei 0.
+ * berechne nach dem einfügen eines neuen werts den neuen durchschnitt.
+ * gebe diesen thresholded zurück
+ * 
+ * 
+ **/
+
+void switchSolarOn(){
+    
+}
