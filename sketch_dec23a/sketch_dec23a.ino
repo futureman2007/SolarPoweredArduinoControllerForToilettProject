@@ -1,9 +1,9 @@
 //-------Used Structs----------
 //used for calculation of average lightvalue
 typedef struct {
-  unsigned long lightValuesMeasured [40];
-  unsigned  int indexToInsertNext;
-  unsigned int arraySize;
+  unsigned static const int ARR_SIZE = 40;
+  unsigned long lightValuesMeasured [ARR_SIZE];
+  unsigned int indexToInsertNext;
   double average;
  }LightValues;
  //used for calculation of average lightvalue
@@ -13,7 +13,6 @@ LightValues lv = {
    0,0,0,0,0,0,0,0,0,0, 
    0,0,0,0,0,0,0,0,0,0},
   0,
-  40,
   0.0
 };
 
@@ -32,7 +31,7 @@ unsigned long prevTimeSinceProgStartForTwentySecondDetection = 20000;
  * lightamount read with relais off: 20. Lightamount read with relais on: 26.
  * The higher this number, the darker it is.
  */
-unsigned const int MINIMUM_LIGHT_NEEDED = 22;
+unsigned static const int MINIMUM_LIGHT_NEEDED = 21;
 /*
  * As mentioned befor, switching on the railis causes a darker light value. 
  * If the relais is on, lightValuesStructHandler() will correct the value by LIGHT_VAL_OFFSET (6).
@@ -40,33 +39,33 @@ unsigned const int MINIMUM_LIGHT_NEEDED = 22;
  * if other sensors will be connected to the arduino in future, 6 could be not enough.
  * the more power is drawn, the more the lightValue will be offsetted.
  */
-unsigned const short LIGHT_VAL_OFFSET = 6;
+unsigned static const short LIGHT_VAL_OFFSET = 7; 
 boolean lightvalCorrectionNeeded = false;
 /* 
  *  the cutOf of the readed lightvalues. should be always be a divisor of MINIMUM_LIGHT_NEEDED.
  *  if sensor reads a light value of: 1,2,3,4,5,6,7,9,10,11, the value measured will be read as 11 if the CUT_OFF is 11.
  *  the values 12,13,14,15,16, .. 22 will be read as 22 and 22,23,24,25, ..., 33 as 33 and so on.
  */
-unsigned const int CUT_OFF = 11;
+unsigned static const int CUT_OFF = 7;
 
 // 2 hours = 7200000ms. After that time, theThingsUno transmitts, how many people used the toilet.
-unsigned const long TIMER_SEND_USAGECOUNT = 7200000;
+unsigned static const long TIMER_SEND_USAGECOUNT = 7200000;
 //20sec. = 20000ms. The time which has to elapse beforea a new usage of the toilett can be registered.
-unsigned const long TIMER_TILL_NEXT_USAGE_DETECTION = 20000;
+unsigned static const long TIMER_TILL_NEXT_USAGE_DETECTION = 20000;
 
 //counter of detected toilett guests
 unsigned int usageCounter = 0;
 
 //===output pins===
 //onboard led
-unsigned const short LED_OUTPUT_PIN = 13;
+unsigned static const short LED_OUTPUT_PIN = 13;
 //Digital pin D3
-unsigned const short RELAIS_OUTPUT_PIN = 3;
+unsigned static const short RELAIS_OUTPUT_PIN = 3;
 //===input pins ===
 //Digital Pin D7
-const short INPUT_PIN_REED_SWITCH = 7;
+unsigned static const short INPUT_PIN_REED_SWITCH = 7;
 //Analog Pin A1
-const short INPUT_PIN_LIGHT_SENSOR = 1;
+unsigned static const short INPUT_PIN_LIGHT_SENSOR = 1;
 
 // ============>>>put your setup code here, to run once<<<============
 void setup() {
@@ -76,10 +75,8 @@ void setup() {
   pinMode(RELAIS_OUTPUT_PIN, OUTPUT);
   pinMode(INPUT_PIN_REED_SWITCH, INPUT);
   pinMode(INPUT_PIN_LIGHT_SENSOR, INPUT_PULLUP);
-//fill the struct with lightvalues for initialisation.
-  for(int i = 0; i < lv.arraySize; i++){
-    lightValuesStructHandler();
-  }
+//fill the struct with lightvalues = 500 for initialisation.
+  lightValuesStructInitializer();
 
 }//setup()
 
@@ -186,9 +183,19 @@ bool enoughLightForSolarPowering() {
 * reeds a new light value and updates Data in lv from type struct LightValues.
 * this is the only function, which modifies the entries of the struct.
 */
+
+void lightValuesStructInitializer(){
+  
+   for(int i = 0; i < lv.ARR_SIZE; i++){
+    lv.lightValuesMeasured[i] = 500;
+   }
+   lv.average = 500,
+   lv.indexToInsertNext = 0;
+}
+
 void lightValuesStructHandler(){
    unsigned long average = 0;
-   unsigned int lightval = analogRead(INPUT_PIN_LIGHT_SENSOR);
+   unsigned int lightval = analogRead(INPUT_PIN_LIGHT_SENSOR) -1;
     if(lightvalCorrectionNeeded){
       Serial.println("===!!!!!!!===LIGHTVALUE WILL BE CORRECTED.===!!!!!!!===");
       Serial.println(LIGHT_VAL_OFFSET);
@@ -202,15 +209,15 @@ void lightValuesStructHandler(){
    lightval = calcCutOff(lightval, CUT_OFF);
      Serial.print("cutOffedLightVal: ");
      Serial.println(lightval);
-   if(lv.indexToInsertNext >= lv.arraySize){
+   if(lv.indexToInsertNext >= lv.ARR_SIZE){
       lv.indexToInsertNext = 0;
    }
    lv.lightValuesMeasured[lv.indexToInsertNext] = lightval;
    lv.indexToInsertNext++;
-   for(int i = 0; i < lv.arraySize; i++){
+   for(int i = 0; i < lv.ARR_SIZE; i++){
     average = average + lv.lightValuesMeasured[i];
    }
-   lv.average = (double)average / lv.arraySize;
+   lv.average = (double)average / lv.ARR_SIZE;
    Serial.print("Calculated Average: ");
    Serial.println(lv.average);
    Serial.println("--------====>  LIGHTVALUES_END  <====--------");
