@@ -1,5 +1,5 @@
 //-------Used Structs----------
-//used for calculation of average lightvalue
+//This struct is used for measuring and calculating the average lightvalue.
 typedef struct {
   unsigned static const int ARR_SIZE = 40;
   unsigned long lightValuesMeasured [ARR_SIZE];
@@ -31,7 +31,7 @@ unsigned long prevTimeSinceProgStartForTwentySecondDetection = 20000;
  * lightamount read with relais off: 20. Lightamount read with relais on: 26.
  * The higher this number, the darker it is.
  */
-unsigned static const int MINIMUM_LIGHT_NEEDED = 21;
+unsigned static const int MINIMUM_LIGHT_NEEDED = 18;
 /*
  * As mentioned befor, switching on the railis causes a darker light value. 
  * If the relais is on, lightValuesStructHandler() will correct the value by LIGHT_VAL_OFFSET (6).
@@ -39,7 +39,7 @@ unsigned static const int MINIMUM_LIGHT_NEEDED = 21;
  * if other sensors will be connected to the arduino in future, 6 could be not enough.
  * the more power is drawn, the more the lightValue will be offsetted.
  */
-unsigned static const short LIGHT_VAL_OFFSET = 7; 
+unsigned static const short LIGHT_VAL_OFFSET = 9; 
 boolean lightvalCorrectionNeeded = false;
 /* 
  *  the cutOf of the readed lightvalues. should be always be a divisor of MINIMUM_LIGHT_NEEDED.
@@ -195,7 +195,7 @@ void lightValuesStructInitializer(){
 
 void lightValuesStructHandler(){
    unsigned long average = 0;
-   unsigned int lightval = analogRead(INPUT_PIN_LIGHT_SENSOR) -1;
+   unsigned int lightval = analogRead(INPUT_PIN_LIGHT_SENSOR);
     if(lightvalCorrectionNeeded){
       Serial.println("===!!!!!!!===LIGHTVALUE WILL BE CORRECTED.===!!!!!!!===");
       Serial.println(LIGHT_VAL_OFFSET);
