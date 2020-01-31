@@ -1,13 +1,22 @@
+#include <TheThingsNetwork.h>
 /**@file sketch_dec23a.ino */
+//////////////////////////////////////
+//----LoRa communikation config------
+//////////////////////////////////////
+
+#define freqPlan TTN_FP_EU868
+#define loraSerial Serial1
+#define debugSerial Serial
+TheThingsNetwork ttn(loraSerial, debugSerial, freqPlan);
 //////////////////////////////////////
 //-------verwendete Structs----------
 //////////////////////////////////////
 
 /**
    Die LightValues Struct wird verwendet, um von den gelesenen Lichtwerten des Lichtsensors einen Durschnittswert zu bilden.
-   Die Struct wird von der Funktion lightValuesStructHandler() verwaltet. Es wird empfohlen nur lesend auf alle
+   Die Struct wird von der Funktion readLightValuesAndCalculateCutOffedAverage() verwaltet. Es wird empfohlen nur lesend auf alle
    Datentypen der Strukt zuzugreifen.
-   Weitere Informationen, wie die Strukt verwaltet wird, können in lightValuesStructHandler() nachgelesen werden.
+   Weitere Informationen, wie die Strukt verwaltet wird, können in readLightValuesAndCalculateCutOffedAverage() nachgelesen werden.
 */
 typedef struct {
   //! Größe des Arrays.
@@ -19,12 +28,14 @@ typedef struct {
   //! Durschnittlich ermittelte Lichtwert.
   double average;
 } LightValues;
+
 /**
     Initialisierung des LightValues lv Objektes. Auf lv wird lediglich lesend zugegriffen,
-    mit Ausnahme von lightValuesStructHandler().
-    lightValuesStructHandler() verwaltet lv. Mehr Informationen dazu können in lightValuesStructHandler()
+    mit Ausnahme von readLightValuesAndCalculateCutOffedAverage().
+    readLightValuesAndCalculateCutOffedAverage() verwaltet lv. Mehr Informationen dazu können in readLightValuesAndCalculateCutOffedAverage()
     nachgelesen werden.
 */
+
 LightValues lv = {
   { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -34,11 +45,41 @@ LightValues lv = {
   0,
   0.0
 };
+  /**
+   Doe ToiletController ist für das zählen der Benutzungen zuständig.
+   Zudem hält die Strukt fest, ob die Toilette Besetzt ist oder nicht.
+   Die Variable ToiletController.toilettOccupied gibt an, ob die toilette besetzt ist oder nicht.
+   Dabei steht "true" für besetzt und "false" für nicht besetzt.
+   Bemerkt der Türsensor, dass die Tür abgeschlossen wurde, wird dieses Event durch
+   checkIfToilettIsOccupiedAndHandleThatEvent() bearbeitet.
+   Dabei wird der Wert der Variable auf "true" gesetzt.
+   Es wird davon ausgegangen, dass ein Toilettengast mindestens 20 Sekunden benötigt
+   Erst nach Ablauf der 20sek. kann ein neuer Gast erfasst werden.
+   Für weitere Inforamtionen, wie genau die Benutzung der Toilette erfasst wird, siehe Dokumentation für checkIfToilettWasFreedAgain() und
+   checkIfToilettIsOccupiedAndHandleThatEvent().
+*/
+typedef struct {
+  
+  //! Besetztstatus der Toilette
+  boolean toilettOccupied = false;
+  //! Zähler für die Anzahl der registrierten Toilettengäste
+  unsigned int usageCounter = 0;
+
+} ToiletController;
+
+ToiletController tc;
+
 
 //////////////////////////////////////
-//--------verwendete Konstanten------
+//-------verwendete Konstanten--------
 //////////////////////////////////////
-/**
+
+//! Die AppEui der TheThingsNetwork App, zudem die gesendeten Daten der Toilette gehören.
+const char *appEui = "70B3D57ED0027C59";
+//! Verwendeter Schlüssel für die Übtertragung. Hängt mit TheThingsNetowrk App zusamen.
+const char *appKey = "5813DF9589E3ED9136413C6436123BBC";
+
+  /**
    Dieser Wert gibt an, ab welchem durschnittlichen Lichtwert des Lichtsensors
    (Photoresistor) die Solaranlage genug Strom für die Versorgung des Arduinos durh
    den PassTbrough Mechanismus der PowerBank liefert.
@@ -51,7 +92,7 @@ unsigned static const int MINIMUM_LIGHT_NEEDED = 18;
    Durch die Aktivierung des Relais steigt der Stromanspruch des Arduinos spürbar an.
    Ein daraus resultierender Seiteneffekt ist, dass Lichtwerte des Lichtsensors (Photoresistor)
    Dunkler erfasst werden. Diese Variable soll entsprechende korrekturen beim einschalten des Relais vornehmen.
-   Diese Korrektur wird dann in lightValuesStructHandler() vorgenommen.
+   Diese Korrektur wird dann in readLightValuesAndCalculateCutOffedAverage() vorgenommen.
 */
 unsigned static const short LIGHT_VAL_OFFSET = 7;
 
@@ -74,6 +115,8 @@ unsigned static const long TIMER_SEND_USAGECOUNT = 7200000;
   Mehr zu dieser Funktion kann in checkIfToilettWasFreedAgain() nachgelesen werden.
 */
 unsigned static const long TIMER_TILL_NEXT_USAGE_DETECTION = 20000;
+
+
 
 //////////////////////////////////////
 //------------output pins------------
@@ -98,17 +141,6 @@ unsigned static const short INPUT_PIN_LIGHT_SENSOR = 1;
 //////////////////////////////////////
 //---------globale Variablen---------
 //////////////////////////////////////
-/**
-   Die Variable toilettOccupied gibt an, ob die toilette besetzt ist oder nicht.
-   Dabei steht "true" für besetzt und "false" für nicht besetzt.
-   Bemerkt der Türsensor, dass die Tür abgeschlossen wurde, wird dieses Event durch
-   checkIfToilettIsOccupiedAndHandleThatEvent() bearbeitet.
-   Dabei wird der Wert der Variable für mindestens 20sek. auf "true" gesetzt.
-   Erst nach Ablauf der 20sek. kann ein neuer Gast erfasst werden.
-   Für weitere Inforamtionen, wie genau die Benutzung der Toilette erfasst wird, siehe Dokumentation für checkIfToilettWasFreedAgain() und
-   checkIfToilettIsOccupiedAndHandleThatEvent().
-*/
-boolean toilettOccupied = false;
 
 /**
    Der Arduino zählt die millisekunden, seitdem das Programm gestartet wurde.
@@ -116,24 +148,20 @@ boolean toilettOccupied = false;
    Ist dies der Fall, wird der Wert der Variable auf den aktuellen Zählerstand von millis() gesetzt.
    Weitere Informationen zur Reaktion darauf, kann in der Dokumentation von checkIfTwoHoursHavePassedAndResetTimer()
    und transmitDataAndResetUsageCounter()nachgelesen werden.
-*/l
-unsigned long prevTimeSinceProgStartForTwoHourDetection = 0;
+*/
+unsigned long prevTimeSinceProgStartForSendingData = 0;
 
 /**
-   Ähnlich zu prevTimeSinceProgStartForTwoHourDetection.
+   Ähnlich zu prevTimeSinceProgStartForSendingData.
    Hier wird allerdings die Zeit von 20sek. festgehalten.
    Mehr dazu in der Dokumentation von checkIfToilettWasFreedAgain().
 */
 unsigned long prevTimeSinceProgStartForTwentySecondDetection = 20000;
 
-
-
 //! Gibt an, ob Korrekturen beim erfassen der Lichtwerte vorgenommen werden müssen. Bspw. nach dem einschalten des Relais in switchSolarOn().
 boolean lightvalCorrectionNeeded = false;
 
 
-//! Zähler für die Anzahl der registrierten Toilettengäste
-unsigned int usageCounter = 0;
 
 //!Setup Code. Wird nur einmal ausgeführt um entsprechende Pins zu Konfigurieren sowie die LightValues lv struct zu initialisieren.
 void setup() {
@@ -143,11 +171,25 @@ void setup() {
   pinMode(RELAIS_OUTPUT_PIN, OUTPUT);
   pinMode(INPUT_PIN_REED_SWITCH, INPUT);
   pinMode(INPUT_PIN_LIGHT_SENSOR, INPUT_PULLUP);
+  switchSolarOff();
   lightValuesStructInitializer();
+//Konfiguration, um mit einem LoRa Gateway in der nähe kommunizieren zu können. Over the air activation wird verwendet.
+  loraSerial.begin(57600);
+  debugSerial.begin(9600);
+  
+  // Wait a maximum of 10s for Serial Monitor
+  while (!debugSerial && millis() < 10000)
+    ;
+    
+  debugSerial.println("-- STATUS");
+  ttn.showStatus();
+
+  debugSerial.println("-- JOIN");
+  ttn.join(appEui, appKey);
 }//setup()
 /**
     Maincode. Führt diesen immer alle 500ms aus.
-    Es wird mittels lightValuesStructHandler() ein neuer Lichtwert gelesen und entsprechende Verwaltungsarbeit für die Strukt ausgeführt.
+    Es wird mittels readLightValuesAndCalculateCutOffedAverage() ein neuer Lichtwert gelesen und entsprechende Verwaltungsarbeit für die Strukt ausgeführt.
     Dannach wird mit enoughLightForSolarPowering() geprüft, ob genügend Licht für den Solarbetrieb zur Verfügung steht.
     Ensprechend des zurückgegebenen Ergebnisses von enoughLightForSolarPowering() wird entweder switchSolarOn() oder switchSolarOff() aufgerufen.
     Liefert checkIfTwoHoursHavePassedAndResetTimer() den Wert "true" zurück, wird transmitDataAndResetUsageCounter() aufgerufen.
@@ -156,7 +198,7 @@ void setup() {
     Zum Schluss wird mit delay() 500ms. lang nichts getan.
 */
 void loop() {
-  lightValuesStructHandler();
+  readLightValuesAndCalculateCutOffedAverage();
   if (enoughLightForSolarPowering()) {
     switchSolarOn();
   } else {
@@ -177,21 +219,22 @@ void loop() {
 
 /**
    Diese Funktion prüft, ob der Türsensor ein Zuschließen der Toilettentür registriert.
-   Ist dies der Fall und toilettOccupied ist auf "false" gesetzt, wird eine Toilettenbenutzung registriert.
+   Ist dies der Fall und ToiletController.toilettOccupied ist auf "false" gesetzt, wird eine Toilettenbenutzung registriert.
    Dabei wird prevTimeSinceProgStartForTwentySecondDetection auf die aktuelle Zeit seit beginn des Arduino Programms gesetzt
-   und usageCounter um eins inkrementiert sowie toilettOccupied auf den Wert "true" gesetzt.
+   und ToiletController.usageCounter um eins inkrementiert sowie ToiletController.toilettOccupied auf den Wert "true" gesetzt.
 */
 void checkIfToilettIsOccupiedAndHandleThatEvent() {
   if (digitalRead(INPUT_PIN_REED_SWITCH) == LOW
-      && toilettOccupied == false
+      && tc.toilettOccupied == false
      ) {
     prevTimeSinceProgStartForTwentySecondDetection = millis();
-    usageCounter++;
-    Serial.println("--------====> TOILETTE USAGE <====--------");
+    tc.usageCounter++;
+    Serial.println("--------====> TOILETE USAGE <====--------");
     Serial.println("New usage! Counter is now:");
-    Serial.println("--------====> TOILETTE USAGE END<====--------");
-    Serial.println(usageCounter);
-    toilettOccupied = true;
+    Serial.print(tc.usageCounter);
+    Serial.println("--------====> TOILETE USAGE END<====--------");
+    tc.toilettOccupied = true;
+    letOnboardLEDBlink(250,5);
   }
 }//checkIfToilettIsOccupiedAndHandleThatEvent()
 
@@ -199,20 +242,20 @@ void checkIfToilettIsOccupiedAndHandleThatEvent() {
    Diese Funktion Prüft, ob die Toilette als "nicht besetzt" angesehen werden kann.
    Eine Toilette gillt erst wieder als niht besetzt, wenn:
    - Der Türsensor registriert, dass die Tür aufgeschlossen wurde,
-   - der Wert von toilettOccupied auf "true" gesetzt ist,
+   - der Wert von ToiletController.toilettOccupied auf "true" gesetzt ist,
    - 20 Sekunden vergangen sind, seit festgestellt wurde, dass die Toilette besetzt ist.
-   Sind all diese Kriterien erfüllt wird toilettOccupied auf "false" gesetzt.
+   Sind all diese Kriterien erfüllt wird ToiletController.toilettOccupied auf "false" gesetzt.
    Dies soll verhindern, dass bspw. Kinder am Türschloss spielen, diesen ständig auf und zu schließen
    und damit falsche Benutzungswerte erzeugen.
-   Die Variable toilettOccupied wird verwendet, damit nicht ständig nach ablauf der 20 Sekunden eine neue Benutzung
+   Die Variable ToiletController.toilettOccupied wird verwendet, damit nicht ständig nach ablauf der 20 Sekunden eine neue Benutzung
    festgestellt wird, wenn jemand die Toilette länger als 20 Sekunden in Anspruch nimmt.
 */
 void checkIfToilettWasFreedAgain() {
   if (digitalRead(INPUT_PIN_REED_SWITCH) == HIGH
-      && toilettOccupied == true
+      && tc.toilettOccupied == true
       && (millis() - prevTimeSinceProgStartForTwentySecondDetection >= TIMER_TILL_NEXT_USAGE_DETECTION)
      ) {
-    toilettOccupied = false;
+    tc.toilettOccupied = false;
   }
 
 }//checkIfToilettWasFreedAgain()
@@ -224,28 +267,43 @@ void letOnboardLEDBlink(int delayInMS) {
 
 /**
     Sind zwei Stunden seit Programmstart laut des internen Zählers des Arduinos vergangen,
-    wird die Variable prevTimeSinceProgStartForTwoHourDetection auf den aktuellen Zeitwert
+    wird die Variable prevTimeSinceProgStartForSendingData auf den aktuellen Zeitwert
     des Arduinos gesetzt und der Wert "true" von der Methode zurückgeliefert.
     Andernfalls wird lediglich der Wert "false" zurückgegeben.
 */
 boolean checkIfTwoHoursHavePassedAndResetTimer() {
-  if ((unsigned long) (millis() - prevTimeSinceProgStartForTwoHourDetection ) >= TIMER_SEND_USAGECOUNT ) {
+  if ((unsigned long) (millis() - prevTimeSinceProgStartForSendingData ) >= TIMER_SEND_USAGECOUNT ) {
     Serial.println("--------====> TWO HOURS TIMER FOR DATA TRANSMISSION <====--------");
     Serial.println("2 Hours are over! ");
     Serial.println("--------====> TWO HOURS TIMER FOR DATA TRANSMISSION END <====--------");
-    prevTimeSinceProgStartForTwoHourDetection = millis();
+    prevTimeSinceProgStartForSendingData = millis();
     return true;
   }
   return false;
 }//checkIfTwoHoursHavePassedAndResetTimer
 /**
-   TODO not finished! LORA GATEWAY NEEDED!
-   Übermittelt mittels des eingebauten LoRa Senders Typ A die Anzahl der Toilettenbenutzungen und setzt usageCounter auf den Wert "0".
+   Übermittelt mittels des eingebauten LoRa Senders Typ A die Anzahl der Toilettenbenutzungen 
+   und setzt ToiletController.usageCounter auf den Wert "0".
+   Die Daten für die Anzahl der Toiletenbenutzungen werden in "little Endien" Format gesendet.  
+   Zudem wird in Ascii zeichencodierung die Nachricht "guests:" vorab eingefügt.
+   Somit besteht die Nachricht aus: "Guests:" und LOW-BYTE usage und HIGH-BYTE usage.
 */
 void transmitDataAndResetUsageCounter() {
-  Serial.println("Transmitting Data and resetting the counter of persons used the toilett.");
-  //sendToiletteUsageCountMessage(usageCounter);
-  usageCounter = 0;
+  Serial.println("===> Transmitting Data and resetting the counter of persons used the toilett.");
+  String message = "Guests:";
+  byte payload [9];
+  message.getBytes(payload, 9);
+  payload[7] = lowByte(tc.usageCounter);
+  payload[8] = highByte(tc.usageCounter);
+
+  for(int i = 0; i < 9; i++){
+    Serial.print(payload[i]);
+    Serial.print(" ");  
+  }
+  Serial.println();
+  ttn.sendBytes(payload, sizeof(payload));
+  
+  tc.usageCounter = 0;
 }//transmitDataAndResetUsageCounter()
 
 //!TESTFUNKTION zum einschalten der eingebauten LED.
@@ -257,6 +315,8 @@ void switchLEDOn() {
 void switchLEDOff() {
   digitalWrite(LED_OUTPUT_PIN, LOW);
 }//switchLEDOff
+
+
 //!TESTFUNKTION Lässt die eingebaute LED blinken.
 void letOnboardLEDBlink( int delayInMS,  int blinkamount) {
   if (delayInMS < 100) {
@@ -272,16 +332,17 @@ void letOnboardLEDBlink( int delayInMS,  int blinkamount) {
     delay(delayInMS);
   }
 }//letOnboardLEDBlink()
+
 /**
    Stellt fest, ob der im durchschnitt ermittelte Lichtwert ausreichend für die Stormversorgung durch die Solaranlage ist.
    Ist dies der Fall, wird der Wert "true" zurückgegeben, andernfalls "false".
 */
 bool enoughLightForSolarPowering() {
   if (lv.average <= MINIMUM_LIGHT_NEEDED) {
-    Serial.println("==========> THERE IS ENOUGH LIGHT! <==========");
+    //Serial.println("==========> THERE IS ENOUGH LIGHT! <==========");
     return true;
   } else {
-    Serial.println("==========> THERE IS NOT ENOUGH LIGHT! <==========");
+    //Serial.println("==========> THERE IS NOT ENOUGH LIGHT! <==========");
     return false;
   }
 }//enoughLightForSolarPowering()
@@ -289,7 +350,6 @@ bool enoughLightForSolarPowering() {
 /**
   Wird durch setup() einmalig aufgerufen. Initialisiert das LightValues lv Objekt bzw. Struct.
 */
-
 void lightValuesStructInitializer() {
 
   for (int i = 0; i < lv.ARR_SIZE; i++) {
@@ -298,6 +358,7 @@ void lightValuesStructInitializer() {
   lv.average = 500,
      lv.indexToInsertNext = 0;
 }
+
 /**
    Liest Werte vom Lichtsensor (Photoresistor) ein.
    Verwaltet Struct LightValues.
@@ -315,21 +376,21 @@ void lightValuesStructInitializer() {
    Je höher der zurückgegebene Wert des Lichtsensors (Photoresistor) ausfällt, desto Dunkler ist die Umgebung.
    Alle Variablen dürfen Lesend zugegriffen werden. Schreibender Zugriff sollte nur von dieser Funktion vorgenommen werden.
 */
-void lightValuesStructHandler() {
+void readLightValuesAndCalculateCutOffedAverage() {
   unsigned long average = 0;
   unsigned int lightval = analogRead(INPUT_PIN_LIGHT_SENSOR);
   if (lightvalCorrectionNeeded) {
-    Serial.println("===!!!!!!!===LIGHTVALUE WILL BE CORRECTED.===!!!!!!!===");
-    Serial.println(LIGHT_VAL_OFFSET);
-    Serial.println("===!!!!!!!===    ===!!!!!!!===");
+    //Serial.println("===!!!!!!!===LIGHTVALUE WILL BE CORRECTED.===!!!!!!!===");
+    //Serial.println(LIGHT_VAL_OFFSET);
+    //Serial.println("===!!!!!!!===    ===!!!!!!!===");
     lightval = lightval - LIGHT_VAL_OFFSET;
   }
-  Serial.println("--------====>    LIGHTVALUES   <====--------");
-  Serial.print("lightval: ");
-  Serial.println(lightval);
+  //Serial.println("--------====>    LIGHTVALUES   <====--------");
+  //Serial.print("lightval: ");
+  //Serial.println(lightval);
   lightval = calcCutOff(lightval, CUT_OFF);
-  Serial.print("cutOffedLightVal: ");
-  Serial.println(lightval);
+  //Serial.print("cutOffedLightVal: ");
+  //Serial.println(lightval);
   if (lv.indexToInsertNext >= lv.ARR_SIZE) {
     lv.indexToInsertNext = 0;
   }
@@ -339,10 +400,10 @@ void lightValuesStructHandler() {
     average = average + lv.lightValuesMeasured[i];
   }
   lv.average = (double)average / lv.ARR_SIZE;
-  Serial.print("Calculated Average: ");
-  Serial.println(lv.average);
-  Serial.println("--------====>  LIGHTVALUES_END  <====--------");
-}//lightValuesStructHandler()
+  //Serial.print("Calculated Average: ");
+  //Serial.println(lv.average);
+  //Serial.println("--------====>  LIGHTVALUES_END  <====--------");
+}//readLightValuesAndCalculateCutOffedAverage()
 
 /**
    Werte des Lichtsensors werden auf den Wert von cutOff aufgerundet.
