@@ -116,7 +116,7 @@ boolean toilettOccupied = false;
    Ist dies der Fall, wird der Wert der Variable auf den aktuellen Zählerstand von millis() gesetzt.
    Weitere Informationen zur Reaktion darauf, kann in der Dokumentation von checkIfTwoHoursHavePassedAndResetTimer()
    und transmitDataAndResetUsageCounter()nachgelesen werden.
-*/
+*/l
 unsigned long prevTimeSinceProgStartForTwoHourDetection = 0;
 
 /**
@@ -176,9 +176,9 @@ void loop() {
 //////////////////////////////////////
 
 /**
-   Diese Funktion prüft, ob der Türsensor ein Zuschließen der Toilettentür registriert. 
-   Ist dies der Fall und toilettOccupied ist auf "false" gesetzt, wird eine Toilettenbenutzung registriert. 
-   Dabei wird prevTimeSinceProgStartForTwentySecondDetection auf die aktuelle Zeit seit beginn des Arduino Programms gesetzt 
+   Diese Funktion prüft, ob der Türsensor ein Zuschließen der Toilettentür registriert.
+   Ist dies der Fall und toilettOccupied ist auf "false" gesetzt, wird eine Toilettenbenutzung registriert.
+   Dabei wird prevTimeSinceProgStartForTwentySecondDetection auf die aktuelle Zeit seit beginn des Arduino Programms gesetzt
    und usageCounter um eins inkrementiert sowie toilettOccupied auf den Wert "true" gesetzt.
 */
 void checkIfToilettIsOccupiedAndHandleThatEvent() {
@@ -202,9 +202,9 @@ void checkIfToilettIsOccupiedAndHandleThatEvent() {
    - der Wert von toilettOccupied auf "true" gesetzt ist,
    - 20 Sekunden vergangen sind, seit festgestellt wurde, dass die Toilette besetzt ist.
    Sind all diese Kriterien erfüllt wird toilettOccupied auf "false" gesetzt.
-   Dies soll verhindern, dass bspw. Kinder am Türschloss spielen, diesen ständig auf und zu schließen 
+   Dies soll verhindern, dass bspw. Kinder am Türschloss spielen, diesen ständig auf und zu schließen
    und damit falsche Benutzungswerte erzeugen.
-   Die Variable toilettOccupied wird verwendet, damit nicht ständig nach ablauf der 20 Sekunden eine neue Benutzung 
+   Die Variable toilettOccupied wird verwendet, damit nicht ständig nach ablauf der 20 Sekunden eine neue Benutzung
    festgestellt wird, wenn jemand die Toilette länger als 20 Sekunden in Anspruch nimmt.
 */
 void checkIfToilettWasFreedAgain() {
@@ -223,10 +223,10 @@ void letOnboardLEDBlink(int delayInMS) {
 }//letOnboardLEDBlink()
 
 /**
-  * Sind zwei Stunden seit Programmstart laut des internen Zählers des Arduinos vergangen, 
-  * wird die Variable prevTimeSinceProgStartForTwoHourDetection auf den aktuellen Zeitwert 
-  * des Arduinos gesetzt und der Wert "true" von der Methode zurückgeliefert. 
-  * Andernfalls wird lediglich der Wert "false" zurückgegeben.
+    Sind zwei Stunden seit Programmstart laut des internen Zählers des Arduinos vergangen,
+    wird die Variable prevTimeSinceProgStartForTwoHourDetection auf den aktuellen Zeitwert
+    des Arduinos gesetzt und der Wert "true" von der Methode zurückgeliefert.
+    Andernfalls wird lediglich der Wert "false" zurückgegeben.
 */
 boolean checkIfTwoHoursHavePassedAndResetTimer() {
   if ((unsigned long) (millis() - prevTimeSinceProgStartForTwoHourDetection ) >= TIMER_SEND_USAGECOUNT ) {
@@ -362,7 +362,7 @@ int calcCutOff(int lightvalueFromSensor, int cutOff) {
 }//calcCutOff()
 
 /**
-   Aktiviert die Stormzufuhr der Solaranlage, indem das Relais die Kabelverbindung von 
+   Aktiviert die Stormzufuhr der Solaranlage, indem das Relais die Kabelverbindung von
    Solaranlage und PassThrough Powerbank schließt.
    Da das Relais einen merklich hohen Energieanspruch hat (Energiebedarf des Arduino vervierfacht sich),
    muss lightvalCorrectionNeeded auf "true" gesetzt werden.
@@ -372,8 +372,8 @@ void switchSolarOn() {
   digitalWrite(RELAIS_OUTPUT_PIN, LOW);
 }
 /**
-   Deaktiviert die Stormzufuhr der Solaranlage, indem das Relais die Kabelverbindung 
-   von Solaranlage und PassThrough Powerbank öffnet. Da das Relais einen merklich 
+   Deaktiviert die Stormzufuhr der Solaranlage, indem das Relais die Kabelverbindung
+   von Solaranlage und PassThrough Powerbank öffnet. Da das Relais einen merklich
    hohen Energieanspruch hat (Energiebedarf des Arduino vervierfacht sich) und dieses nun ausgeschaltet wird,
    muss lightvalCorrectionNeeded auf "false" gesetzt werden.
 */
